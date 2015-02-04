@@ -28,6 +28,7 @@ C_SRCS = \
 	stack.c \
 	storage.c \
 	symbol.c \
-	type.c
+	type.c \
+	wine_nlist_64.cc
 
 RC_SRCS = version.rc

@@ -236,6 +236,72 @@ static inline int arch_prctl( int func, void *ptr ) { return syscall( __NR_arch_
 #define ERROR_sig(context)  ((context)->uc_mcontext.__gregs[_REG_ERR])
 
 #define FPU_sig(context)   ((XMM_SAVE_AREA32 *)((context)->uc_mcontext.__fpregs))
+
+#elif defined(__APPLE__)
+
+#if __DARWIN_UNIX03 && defined(_STRUCT_X86_EXCEPTION_STATE32)
+
+#define RAX_sig(context)    ((context)->uc_mcontext->__ss.__rax)
+#define RBX_sig(context)    ((context)->uc_mcontext->__ss.__rbx)
+#define RCX_sig(context)    ((context)->uc_mcontext->__ss.__rcx)
+#define RDX_sig(context)    ((context)->uc_mcontext->__ss.__rdx)
+#define RSI_sig(context)    ((context)->uc_mcontext->__ss.__rsi)
+#define RDI_sig(context)    ((context)->uc_mcontext->__ss.__rdi)
+#define RBP_sig(context)    ((context)->uc_mcontext->__ss.__rbp)
+#define R8_sig(context)     ((context)->uc_mcontext->__ss.__r8)
+#define R9_sig(context)     ((context)->uc_mcontext->__ss.__r9)
+#define R10_sig(context)    ((context)->uc_mcontext->__ss.__r10)
+#define R11_sig(context)    ((context)->uc_mcontext->__ss.__r11)
+#define R12_sig(context)    ((context)->uc_mcontext->__ss.__r12)
+#define R13_sig(context)    ((context)->uc_mcontext->__ss.__r13)
+#define R14_sig(context)    ((context)->uc_mcontext->__ss.__r14)
+#define R15_sig(context)    ((context)->uc_mcontext->__ss.__r15)
+
+#define CS_sig(context)     ((context)->uc_mcontext->__ss.__cs)
+#define FS_sig(context)     ((context)->uc_mcontext->__ss.__fs)
+#define GS_sig(context)     ((context)->uc_mcontext->__ss.__gs)
+
+#define EFL_sig(context)    ((context)->uc_mcontext->__ss.__rflags)
+
+#define RIP_sig(context)    ((context)->uc_mcontext->__ss.__rip)
+#define RSP_sig(context)    ((context)->uc_mcontext->__ss.__rsp)
+
+#define TRAP_sig(context)    ((context)->uc_mcontext->__es.__trapno)
+#define ERROR_sig(context)   ((context)->uc_mcontext->__es.__err)
+#define FPU_sig(context)     ((XMM_SAVE_AREA32 *)&(context)->uc_mcontext->__fs)
+
+#else
+
+#define RAX_sig(context)    ((context)->uc_mcontext->ss.rax)
+#define RBX_sig(context)    ((context)->uc_mcontext->ss.rbx)
+#define RCX_sig(context)    ((context)->uc_mcontext->ss.rcx)
+#define RDX_sig(context)    ((context)->uc_mcontext->ss.rdx)
+#define RSI_sig(context)    ((context)->uc_mcontext->ss.rsi)
+#define RDI_sig(context)    ((context)->uc_mcontext->ss.rdi)
+#define RBP_sig(context)    ((context)->uc_mcontext->ss.rbp)
+#define R8_sig(context)     ((context)->uc_mcontext->ss.r8)
+#define R9_sig(context)     ((context)->uc_mcontext->ss.r9)
+#define R10_sig(context)    ((context)->uc_mcontext->ss.r10)
+#define R11_sig(context)    ((context)->uc_mcontext->ss.r11)
+#define R12_sig(context)    ((context)->uc_mcontext->ss.r12)
+#define R13_sig(context)    ((context)->uc_mcontext->ss.r13)
+#define R14_sig(context)    ((context)->uc_mcontext->ss.r14)
+#define R15_sig(context)    ((context)->uc_mcontext->ss.r15)
+
+#define CS_sig(context)     ((context)->uc_mcontext->ss.cs)
+#define FS_sig(context)     ((context)->uc_mcontext->ss.fs)
+#define GS_sig(context)     ((context)->uc_mcontext->ss.gs)
+
+#define EFL_sig(context)    ((context)->uc_mcontext->ss.rflags)
+
+#define RIP_sig(context)    ((context)->uc_mcontext->ss.rip)
+#define RSP_sig(context)    ((context)->uc_mcontext->ss.rsp)
+
+#define TRAP_sig(context)    ((context)->uc_mcontext->es.trapno)
+#define ERROR_sig(context)   ((context)->uc_mcontext->es.err)
+#define FPU_sig(context)     ((XMM_SAVE_AREA32 *)&(context)->uc_mcontext->fs)
+#endif
+
 #else
 #error You must define the signal context functions for your platform
 #endif
@@ -2510,6 +2576,21 @@ void signal_free_thread( TEB *teb )
 /**********************************************************************
  *		signal_init_thread
  */
+
+#if defined(__APPLE__)
+
+#define MSR_IA32_KERNEL_GS_BASE         0xC0000102
+
+#define wrmsr(msr,lo,hi) \
+        __asm__ volatile("wrmsr" : : "c" (msr), "a" (lo), "d" (hi))
+
+static inline void wrmsr64(uint32_t msr, uint64_t val)
+{
+    wrmsr(msr, (val & 0xFFFFFFFFUL), ((val >> 32) & 0xFFFFFFFFUL));
+}
+
+#endif
+
 void signal_init_thread( TEB *teb )
 {
     const WORD fpu_cw = 0x27f;
@@ -2521,8 +2602,19 @@ void signal_init_thread( TEB *teb )
     amd64_set_gsbase( teb );
 #elif defined(__NetBSD__)
     sysarch( X86_64_SET_GSBASE, &teb );
+#elif defined(__APPLE__)
+
+
+#ifdef __LP64__
+    wrmsr64(MSR_IA32_KERNEL_GS_BASE, (uint64_t)teb);
 #else
+    wrmsr(MSR_IA32_KERNEL_GS_BASE, (uint32_t)teb, 0);
+#endif
+
+#else
+
 # error Please define setting %gs for your architecture
+    
 #endif
 
     ss.ss_sp    = (char *)teb + teb_size;

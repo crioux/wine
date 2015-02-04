@@ -65,6 +65,7 @@ struct dyld_all_image_infos {
 #include "winternl.h"
 #include "wine/library.h"
 #include "wine/debug.h"
+#include "wine_nlist_64.h"
 
 #ifdef WORDS_BIGENDIAN
 #define swap_ulong_be_to_host(n) (n)
@@ -1002,11 +1003,40 @@ static BOOL macho_load_file(struct process* pcs, const WCHAR* filename,
                and we can find the dyld image infos address by looking up its symbol. */
             if (!dyld_all_image_infos_addr)
             {
+                /*
                 struct nlist nl[2];
                 memset(nl, 0, sizeof(nl));
                 nl[0].n_un.n_name = (char*)"_dyld_all_image_infos";
                 if (!nlist("/usr/lib/dyld", nl))
                     dyld_all_image_infos_addr = (void*)nl[0].n_value;
+                */
+#ifdef __LP64__
+                  struct nlist_64 symbol_info[8] = {};
+                  const char *symbolNames[2] = { "_dyld_all_image_infos", "\0" };
+                  struct nlist_64 *list = &symbol_info[0];
+                  int invalidEntriesCount = wine_nlist_64("/usr/lib/dyld",
+                                                          list,
+                                                          symbolNames,
+                                                          CPU_TYPE_X86_64);
+                  if(invalidEntriesCount != 0) {
+                    return 0;
+                  }
+
+                  dyld_all_image_infos_addr = (void *)(list->n_value);
+#else
+                  struct nlist symbol_info[8] = {};
+                  const char *symbolNames[2] = { "_dyld_all_image_infos", "\0" };
+                  struct nlist *list = &symbol_info[0];
+                  int invalidEntriesCount = wine_nlist("/usr/lib/dyld",
+                                                        list,
+                                                        symbolNames,
+                                                        CPU_TYPE_I386);
+                  if(invalidEntriesCount != 0) {
+                    return 0;
+                  }
+
+                  dyld_all_image_infos_addr = (void *)(list->n_value);
+#endif
             }
 
             if (dyld_all_image_infos_addr)
