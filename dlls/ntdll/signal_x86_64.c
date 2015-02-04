@@ -2581,12 +2581,23 @@ void signal_free_thread( TEB *teb )
 
 #define MSR_IA32_KERNEL_GS_BASE         0xC0000102
 
-#define wrmsr(msr,lo,hi) \
-        __asm__ volatile("wrmsr" : : "c" (msr), "a" (lo), "d" (hi))
-
 static inline void wrmsr64(uint32_t msr, uint64_t val)
 {
-    wrmsr(msr, (val & 0xFFFFFFFFUL), ((val >> 32) & 0xFFFFFFFFUL));
+    asm("movq $0x3000003, %%rax\n\t"
+        "syscall\n\t":
+        : "D" (val)
+        : "%rax" );
+}
+
+static inline uint16_t read_gs()
+{
+    uint16_t gs;
+    asm("movw %%gs,%0"
+        : "=r" (gs)
+        :
+        :
+        );
+    return gs;
 }
 
 #endif
@@ -2601,9 +2612,12 @@ void signal_init_thread( TEB *teb )
 #elif defined (__FreeBSD__) || defined (__FreeBSD_kernel__)
     amd64_set_gsbase( teb );
 #elif defined(__NetBSD__)
+
     sysarch( X86_64_SET_GSBASE, &teb );
 #elif defined(__APPLE__)
 
+    struct ntdll_thread_data * ptd = (struct ntdll_thread_data *)(teb->SystemReserved2);
+    ptd->saved_gs = read_gs();
 
 #ifdef __LP64__
     wrmsr64(MSR_IA32_KERNEL_GS_BASE, (uint64_t)teb);
