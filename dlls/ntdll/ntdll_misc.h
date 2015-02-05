@@ -237,7 +237,7 @@ struct ntdll_thread_data
     BOOL               wow64_redir;   /* 1f4/308 Wow64 filesystem redirection flag */
     pthread_t          pthread_id;    /* 1f8/310 pthread thread id */
 #ifdef __APPLE__
-    uint16_t           saved_gs;
+    uint64_t           saved_gsbase;  /* 1fc saved MSR 0xC0000102 */
 #endif
 #ifdef __i386__
     WINE_VM86_TEB_INFO vm86;          /* 1fc vm86 private data */

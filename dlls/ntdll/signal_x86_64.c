@@ -2577,27 +2577,31 @@ void signal_free_thread( TEB *teb )
  *		signal_init_thread
  */
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && defined(__LP64__)
 
+#define MSR_IA32_GS_BASE                0xC0000101
 #define MSR_IA32_KERNEL_GS_BASE         0xC0000102
+#define THREAD_FAST_SET_CTHREAD_SELF    "0x3000003"
 
-static inline void wrmsr64(uint32_t msr, uint64_t val)
+static inline void write_gs_base(uint64_t val)
 {
-    asm("movq $0x3000003, %%rax\n\t"
+    asm("movq $"THREAD_FAST_SET_CTHREAD_SELF", %%rax\n\t"
         "syscall\n\t":
         : "D" (val)
         : "%rax" );
 }
 
-static inline uint16_t read_gs()
+static uint64_t read_gs0()
 {
-    uint16_t gs;
-    asm("movw %%gs,%0"
-        : "=r" (gs)
+    uint64_t x;
+
+    asm("movq %%gs:(0), %0"
+        : "=r" (x)
         :
         :
         );
-    return gs;
+
+    return x;
 }
 
 #endif
@@ -2614,16 +2618,11 @@ void signal_init_thread( TEB *teb )
 #elif defined(__NetBSD__)
 
     sysarch( X86_64_SET_GSBASE, &teb );
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && defined(__LP64__)
 
-    struct ntdll_thread_data * ptd = (struct ntdll_thread_data *)(teb->SystemReserved2);
-    ptd->saved_gs = read_gs();
-
-#ifdef __LP64__
-    wrmsr64(MSR_IA32_KERNEL_GS_BASE, (uint64_t)teb);
-#else
-    wrmsr(MSR_IA32_KERNEL_GS_BASE, (uint32_t)teb, 0);
-#endif
+    struct ntdll_thread_data *ptd = (struct ntdll_thread_data *)(teb->SystemReserved2);
+    ptd->saved_gsbase = read_gs0() + 0xE0;
+    write_gs_base((uint64_t)teb);
 
 #else
 
