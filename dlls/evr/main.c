@@ -1,5 +1,5 @@
 /*
- * Copyright (C) the Wine project
+ * Copyright (C) 2015 Austin English
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,22 +15,23 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
+#include "config.h"
 
-#ifndef __WINE_HIDSDI_H
-#define __WINE_HIDSDI_H
+#include <stdarg.h>
 
-#include "hidusage.h"
-/* FIXME: #include "hidpi.h" */
+#include "windef.h"
+#include "winbase.h"
 
-#ifndef WINE_NTSTATUS_DECLARED
-#define WINE_NTSTATUS_DECLARED
-typedef LONG NTSTATUS;
-#endif
+BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
+{
+    switch (reason)
+    {
+        case DLL_WINE_PREATTACH:
+            return FALSE;    /* prefer native version */
+        case DLL_PROCESS_ATTACH:
+            DisableThreadLibraryCalls(instance);
+            break;
+    }
 
-BOOLEAN WINAPI HidD_GetFeature(HANDLE HidDeviceObject, PVOID ReportBuffer, ULONG ReportBufferLength);
-void WINAPI HidD_GetHidGuid(LPGUID guid);
-BOOLEAN WINAPI HidD_GetManufacturerString(HANDLE HidDeviceObject, PVOID Buffer, ULONG BufferLength);
-BOOLEAN WINAPI HidD_GetProductString(HANDLE HidDeviceObject, PVOID Buffer, ULONG BufferLength);
-BOOLEAN WINAPI HidD_SetFeature(HANDLE HidDeviceObject, PVOID ReportBuffer, ULONG ReportBufferLength);
-
-#endif  /* __WINE_HIDSDI_H */
+    return TRUE;
+}
