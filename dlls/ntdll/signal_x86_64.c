@@ -237,7 +237,6 @@ static inline int arch_prctl( int func, void *ptr ) { return syscall( __NR_arch_
 #define ERROR_sig(context)  ((context)->uc_mcontext.__gregs[_REG_ERR])
 
 #define FPU_sig(context)   ((XMM_SAVE_AREA32 *)((context)->uc_mcontext.__fpregs))
-
 #elif defined (__APPLE__)
 static pthread_key_t teb_key;
 
@@ -306,6 +305,10 @@ typedef void (*raise_func)( EXCEPTION_RECORD *rec, CONTEXT *context );
 typedef int (*wine_signal_handler)(unsigned int sig);
 
 static wine_signal_handler handlers[256];
+
+#ifdef __APPLE__
+static pthread_key_t teb_key;
+#endif
 
 
 /***********************************************************************
@@ -2598,6 +2601,7 @@ void signal_init_thread( TEB *teb )
 #elif defined(__NetBSD__)
 
     sysarch( X86_64_SET_GSBASE, &teb );
+#elif defined(__APPLE__)
 
     struct ntdll_thread_data *ptd = (struct ntdll_thread_data *)(teb->SystemReserved2);
     ptd->saved_gsbase = read_gs0() + 0xE0;
@@ -2630,19 +2634,6 @@ void signal_init_thread( TEB *teb )
     FIXME("FPU setup not implemented for this platform.\n");
 #endif
 }
-
-
-#if defined(__APPLE__)
-
-/**********************************************************************
- *           NtCurrentTeb   (NTDLL.@)
- */
-TEB * WINAPI NtCurrentTeb(void)
-{
-    return pthread_getspecific( teb_key );
-}
-
-#endif
 
 /**********************************************************************
  *		signal_init_process
