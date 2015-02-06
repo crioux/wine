@@ -247,6 +247,51 @@ struct stub
     BYTE jmpq_rax[2];      /* jmp %rax */
 };
 #endif
+
+#ifdef __APPLE__
+
+struct windows_thunk
+{
+    BYTE push_rdi;
+    BYTE push_rcx;
+    BYTE push_r11[2];
+    BYTE movabsq_ntct_rax[2];
+    uint64_t abs_addr_of_ntcurrentteb;
+    BYTE callq_rax[2];
+    BYTE movq_rax_rdi[3];
+    BYTE movq_sc_rax[3];
+    uint32_t syscall_number;
+    BYTE syscall[2];
+    BYTE pop_r11[2];
+    BYTE pop_rcx;
+    BYTE pop_rdi;
+    BYTE movabsq_ntct_rax[2];
+    uint64_t abs_addr_of_target;
+    BYTE jmpq_rax[2];
+};
+
+struct darwin_thunk
+{
+    BYTE push_rdi;
+    BYTE push_rcx;
+    BYTE push_r11[2];
+    BYTE movq_gs_rel_rdi[5];
+    uint32_t gs_rel_addr;
+    BYTE movq_rdi_rel_rdi[3];
+    uint32_t rdi_rel_addr;
+    BYTE movq_sc_rax[3];
+    uint32_t syscallnum;
+    BYTE syscall[2];
+    BYTE pop_r11[2];
+    BYTE pop_rcx;
+    BYTE pop_rdi;
+    BYTE movabsq_ntct_rax[2];
+    uint64_t abs_addr_of_target;
+    BYTE jmpq_rax[2];
+};
+
+#endif
+
 #include "poppack.h"
 
 /*************************************************************************
@@ -552,6 +597,121 @@ static FARPROC find_named_export( HMODULE module, const IMAGE_EXPORT_DIRECTORY *
 
 }
 
+#ifdef __APPLE__
+
+/*************************************************************************
+/*      allocate_windows_thunk
+ *
+ * Create a thunk function that converts GS base to Windows GS base
+ */
+
+ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
+{
+
+#define WINTHUNK_MAX_SIZE (1024*1024)
+    static struct windows_thunk *winthunks=NULL;
+    static unsigned int nb_winthunks=0;
+    struct windows_thunk *winthunk=NULL;
+
+    if (nb_winthunks >= WINTHUNK_MAX_SIZE / sizeof(*winthunk)) return 0xdeadbeef;
+
+    if (!winthunks)
+    {
+        SIZE_T size = WINTHUNK_MAX_SIZE;
+        if (NtAllocateVirtualMemory( NtCurrentProcess(), (void **)&winthunks, 0, &size,
+                                     MEM_COMMIT, PAGE_EXECUTE_READWRITE ) != STATUS_SUCCESS)
+            return 0xdeadbeef;
+    }
+    winthunk = &winthunks[nb_winthunks++];
+
+    winthunk->push_rdi = 0x57;
+    winthunk->push_rcx = 0x51;
+    winthunk->push_r11[0] = 0x41; 
+    winthunk->push_r11[1] = 0x53; 
+    winthunk->movabsq_ntct_rax[0] = 0x48;
+    winthunk->movabsq_ntct_rax[1] = 0xB8;    
+    winthunk->abs_addr_of_ntcurrentteb = (uint64_t)NtCurrentTeb;
+    winthunk->callq_rax[0]=0xFF;
+    winthunk->callq_rax[1]=0x10;
+    winthunk->movq_rax_rdi[0]=0x48;
+    winthunk->movq_rax_rdi[1]=0x89;
+    winthunk->movq_rax_rdi[2]=0xC7;
+    winthunk->movq_sc_rax[0]=0x48;
+    winthunk->movq_sc_rax[1]=0xC7;
+    winthunk->movq_sc_rax[2]=0xC0;
+    winthunk->syscall_number=0x03000003;
+    winthunk->syscall[0]=0x0F;
+    winthunk->syscall[1]=0x05;
+    winthunk->pop_r11[0]=0x41;
+    winthunk->pop_r11[1]=0x5B;
+    winthunk->pop_rcx[0]=0x59;
+    winthunk->pop_rdi[0]=0x5F;
+    winthunk->movabsq_ntct_rax[0]=0x48;
+    winthunk->movabsq_ntct_rax[1]=0xB8;
+    winthunk->abs_addr_of_target = target;
+    winthunk->jmpq_rax[0]=0xFF;
+    winthunk->jmpq_rax[1]=0x20;
+
+    return (ULONG_PTR)winthunk;
+}
+
+/*************************************************************************
+/*      allocate_darwin_thunk
+ *
+ * Create a thunk function that converts GS base to Darwin GS base
+ */
+
+ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
+{
+    uint32_t ptdoffset = (uint32_t)(uint64_t)&(((TEB *)0)->SystemReserved2);
+    uint32_t gsoffset = (uint32_t)(uint64_t)&(((struct ntdll_thread_data *)0)->saved_gsbase);
+
+#define DARTHUNK_MAX_SIZE (1024*1024)
+    static struct darwin_thunk *darthunks=NULL;
+    static unsigned int nb_darthunks=0;
+    struct darwin_thunk *darthunk=NULL;
+
+    if (nb_darthunks >= DARTHUNK_MAX_SIZE / sizeof(*darthunk)) return 0xdeadbeef;
+
+    if (!darthunks)
+    {
+        SIZE_T size = DARTHUNK_MAX_SIZE;
+        if (NtAllocateVirtualMemory( NtCurrentProcess(), (void **)&darthunks, 0, &size,
+                                     MEM_COMMIT, PAGE_EXECUTE_READWRITE ) != STATUS_SUCCESS)
+            return 0xdeadbeef;
+    }
+    darthunk = &darthunks[nb_darthunks++];
+
+    darthunk->movq_gs_rel_rdi[0]=0x65;
+    darthunk->movq_gs_rel_rdi[1]=0x48;
+    darthunk->movq_gs_rel_rdi[2]=0x8B;
+    darthunk->movq_gs_rel_rdi[3]=0x3C;
+    darthunk->movq_gs_rel_rdi[4]=0x25;
+    darthunk->gs_rel_addr=ptdoffset;
+    darthunk->movq_rdi_rel_rdi[0]=0x48;
+    darthunk->movq_rdi_rel_rdi[1]=0x8B;
+    darthunk->movq_rdi_rel_rdi[2]=0xBF;
+    darthunk->rdi_rel_addr=gsoffset;
+    darthunk->movq_sc_rax[0]=0x48;
+    darthunk->movq_sc_rax[1]=0xC7;
+    darthunk->movq_sc_rax[2]=0xC0;
+    darthunk->syscall_number=0x03000003;
+    darthunk->syscall[0]=0x0F;
+    darthunk->syscall[1]=0x05;
+    darthunk->pop_r11[0]=0x41;
+    darthunk->pop_r11[1]=0x5B;
+    darthunk->pop_rcx[0]=0x59;
+    darthunk->pop_rdi[0]=0x5F;
+    darthunk->movabsq_ntct_rax[0]=0x48;
+    darthunk->movabsq_ntct_rax[1]=0xB8;
+    darthunk->abs_addr_of_target = target;
+    darthunk->jmpq_rax[0]=0xFF;
+    darthunk->jmpq_rax[1]=0x20;
+
+    return (ULONG_PTR)darthunk;    
+}
+
+#endif
 
 /*************************************************************************
  *		import_dll
@@ -681,6 +841,35 @@ static WINE_MODREF *import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *d
             TRACE_(imports)("--- %s %s.%d = %p\n",
                             pe_name->Name, name, pe_name->Hint, (void *)thunk_list->u1.Function);
         }
+
+#ifdef __APPLE__
+
+        /* Special GS handling for OSX */
+        {
+            BOOL current_is_native = (current_modref->ldr.Flags & LDR_WINE_INTERNAL) ? TRUE:FALSE;
+            BOOL imp_is_native = (wmImp->ldr.Flags & LDR_WINE_INTERNAL) ? TRUE:FALSE;
+
+            if(!current_is_native && imp_is_native)
+            {
+                /*
+                If we are a builtin and we're importing a native
+                switch to windows gs base
+                */
+                thunk_list->u1.Function = allocate_windows_thunk(thunk_list->u1.Function);
+            }
+
+            if(current_is_native && !imp_is_native)
+            {
+                /* 
+                If we are a native and we're importing a builtin
+                switch to darwin gs base
+                */
+                thunk_list->u1.Function = allocate_darwin_thunk(thunk_list->u1.Function);
+            }
+        }
+
+#endif
+
         import_list++;
         thunk_list++;
     }

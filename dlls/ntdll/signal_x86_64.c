@@ -68,6 +68,7 @@
 #include <valgrind/memcheck.h>
 #endif
 
+
 WINE_DEFAULT_DEBUG_CHANNEL(seh);
 
 struct _DISPATCHER_CONTEXT;
@@ -337,6 +338,11 @@ typedef void (*raise_func)( EXCEPTION_RECORD *rec, CONTEXT *context );
 typedef int (*wine_signal_handler)(unsigned int sig);
 
 static wine_signal_handler handlers[256];
+
+#ifdef __APPLE__
+static pthread_key_t teb_key;
+#endif
+
 
 /***********************************************************************
  * Dynamic unwind table
@@ -2577,7 +2583,7 @@ void signal_free_thread( TEB *teb )
  *		signal_init_thread
  */
 
-#if defined(__APPLE__) && defined(__LP64__)
+#if defined(__APPLE__)
 
 #define MSR_IA32_GS_BASE                0xC0000101
 #define MSR_IA32_KERNEL_GS_BASE         0xC0000102
@@ -2618,11 +2624,21 @@ void signal_init_thread( TEB *teb )
 #elif defined(__NetBSD__)
 
     sysarch( X86_64_SET_GSBASE, &teb );
-#elif defined(__APPLE__) && defined(__LP64__)
+#elif defined(__APPLE__)
 
     struct ntdll_thread_data *ptd = (struct ntdll_thread_data *)(teb->SystemReserved2);
     ptd->saved_gsbase = read_gs0() + 0xE0;
-    write_gs_base((uint64_t)teb);
+
+//    write_gs_base((uint64_t)teb);
+
+    static BOOL init_done=FALSE;
+
+    if (!init_done)
+    {
+        pthread_key_create( &teb_key, NULL );
+        init_done = TRUE;
+    }
+    pthread_setspecific( teb_key, teb );
 
 #else
 
@@ -2641,6 +2657,19 @@ void signal_init_thread( TEB *teb )
     FIXME("FPU setup not implemented for this platform.\n");
 #endif
 }
+
+
+#if defined(__APPLE__)
+
+/**********************************************************************
+ *           NtCurrentTeb   (NTDLL.@)
+ */
+TEB * WINAPI NtCurrentTeb(void)
+{
+    return pthread_getspecific( teb_key );
+}
+
+#endif
 
 /**********************************************************************
  *		signal_init_process
