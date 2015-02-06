@@ -252,6 +252,7 @@ struct stub
 
 struct windows_thunk
 {
+    BYTE nop;
     BYTE push_rdi;
     BYTE push_rcx;
     BYTE push_r11[2];
@@ -265,13 +266,14 @@ struct windows_thunk
     BYTE pop_r11[2];
     BYTE pop_rcx;
     BYTE pop_rdi;
-    BYTE movabsq_ntct_rax[2];
+    BYTE movabsq_targ_rax[2];
     uint64_t abs_addr_of_target;
     BYTE jmpq_rax[2];
 };
 
 struct darwin_thunk
 {
+    BYTE nop;
     BYTE push_rdi;
     BYTE push_rcx;
     BYTE push_r11[2];
@@ -280,12 +282,12 @@ struct darwin_thunk
     BYTE movq_rdi_rel_rdi[3];
     uint32_t rdi_rel_addr;
     BYTE movq_sc_rax[3];
-    uint32_t syscallnum;
+    uint32_t syscall_number;
     BYTE syscall[2];
     BYTE pop_r11[2];
     BYTE pop_rcx;
     BYTE pop_rdi;
-    BYTE movabsq_ntct_rax[2];
+    BYTE movabsq_targ_rax[2];
     uint64_t abs_addr_of_target;
     BYTE jmpq_rax[2];
 };
@@ -600,7 +602,7 @@ static FARPROC find_named_export( HMODULE module, const IMAGE_EXPORT_DIRECTORY *
 #ifdef __APPLE__
 
 /*************************************************************************
-/*      allocate_windows_thunk
+ *      allocate_windows_thunk
  *
  * Create a thunk function that converts GS base to Windows GS base
  */
@@ -624,6 +626,7 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
     }
     winthunk = &winthunks[nb_winthunks++];
 
+    winthunk->nop=0xCC; //0x90;
     winthunk->push_rdi = 0x57;
     winthunk->push_rcx = 0x51;
     winthunk->push_r11[0] = 0x41; 
@@ -632,7 +635,7 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
     winthunk->movabsq_ntct_rax[1] = 0xB8;    
     winthunk->abs_addr_of_ntcurrentteb = (uint64_t)NtCurrentTeb;
     winthunk->callq_rax[0]=0xFF;
-    winthunk->callq_rax[1]=0x10;
+    winthunk->callq_rax[1]=0xD0;
     winthunk->movq_rax_rdi[0]=0x48;
     winthunk->movq_rax_rdi[1]=0x89;
     winthunk->movq_rax_rdi[2]=0xC7;
@@ -644,19 +647,19 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
     winthunk->syscall[1]=0x05;
     winthunk->pop_r11[0]=0x41;
     winthunk->pop_r11[1]=0x5B;
-    winthunk->pop_rcx[0]=0x59;
-    winthunk->pop_rdi[0]=0x5F;
-    winthunk->movabsq_ntct_rax[0]=0x48;
-    winthunk->movabsq_ntct_rax[1]=0xB8;
+    winthunk->pop_rcx=0x59;
+    winthunk->pop_rdi=0x5F;
+    winthunk->movabsq_targ_rax[0]=0x48;
+    winthunk->movabsq_targ_rax[1]=0xB8;
     winthunk->abs_addr_of_target = target;
     winthunk->jmpq_rax[0]=0xFF;
-    winthunk->jmpq_rax[1]=0x20;
+    winthunk->jmpq_rax[1]=0xE0;
 
     return (ULONG_PTR)winthunk;
 }
 
 /*************************************************************************
-/*      allocate_darwin_thunk
+ *      allocate_darwin_thunk
  *
  * Create a thunk function that converts GS base to Darwin GS base
  */
@@ -682,6 +685,11 @@ ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
     }
     darthunk = &darthunks[nb_darthunks++];
 
+    darthunk->nop=0xCC; //0x90;
+    darthunk->push_rdi=0x57;
+    darthunk->push_rcx=0x51;
+    darthunk->push_r11[0]=0x41;
+    darthunk->push_r11[1]=0x53;
     darthunk->movq_gs_rel_rdi[0]=0x65;
     darthunk->movq_gs_rel_rdi[1]=0x48;
     darthunk->movq_gs_rel_rdi[2]=0x8B;
@@ -700,13 +708,13 @@ ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
     darthunk->syscall[1]=0x05;
     darthunk->pop_r11[0]=0x41;
     darthunk->pop_r11[1]=0x5B;
-    darthunk->pop_rcx[0]=0x59;
-    darthunk->pop_rdi[0]=0x5F;
-    darthunk->movabsq_ntct_rax[0]=0x48;
-    darthunk->movabsq_ntct_rax[1]=0xB8;
+    darthunk->pop_rcx=0x59;
+    darthunk->pop_rdi=0x5F;
+    darthunk->movabsq_targ_rax[0]=0x48;
+    darthunk->movabsq_targ_rax[1]=0xB8;
     darthunk->abs_addr_of_target = target;
     darthunk->jmpq_rax[0]=0xFF;
-    darthunk->jmpq_rax[1]=0x20;
+    darthunk->jmpq_rax[1]=0xE0;
 
     return (ULONG_PTR)darthunk;    
 }
@@ -846,22 +854,22 @@ static WINE_MODREF *import_dll( HMODULE module, const IMAGE_IMPORT_DESCRIPTOR *d
 
         /* Special GS handling for OSX */
         {
-            BOOL current_is_native = (current_modref->ldr.Flags & LDR_WINE_INTERNAL) ? TRUE:FALSE;
-            BOOL imp_is_native = (wmImp->ldr.Flags & LDR_WINE_INTERNAL) ? TRUE:FALSE;
+            BOOL current_is_builtin = (current_modref->ldr.Flags & LDR_WINE_INTERNAL) ? TRUE:FALSE;
+            BOOL imp_is_builtin = (wmImp->ldr.Flags & LDR_WINE_INTERNAL) ? TRUE:FALSE;
 
-            if(!current_is_native && imp_is_native)
+            if(current_is_builtin && !imp_is_builtin)
             {
                 /*
-                If we are a builtin and we're importing a native
+                If we are a builtin and we're importing a windows
                 switch to windows gs base
                 */
                 thunk_list->u1.Function = allocate_windows_thunk(thunk_list->u1.Function);
             }
 
-            if(current_is_native && !imp_is_native)
+            if(!current_is_builtin && imp_is_builtin)
             {
                 /* 
-                If we are a native and we're importing a builtin
+                If we are a windows and we're importing a builtin
                 switch to darwin gs base
                 */
                 thunk_list->u1.Function = allocate_darwin_thunk(thunk_list->u1.Function);

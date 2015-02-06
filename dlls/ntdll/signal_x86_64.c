@@ -238,70 +238,38 @@ static inline int arch_prctl( int func, void *ptr ) { return syscall( __NR_arch_
 
 #define FPU_sig(context)   ((XMM_SAVE_AREA32 *)((context)->uc_mcontext.__fpregs))
 
-#elif defined(__APPLE__)
+#elif defined (__APPLE__)
+static pthread_key_t teb_key;
 
-#if __DARWIN_UNIX03 && defined(_STRUCT_X86_EXCEPTION_STATE32)
+#define RAX_sig(context)     ((context)->uc_mcontext->__ss.__rax)
+#define RBX_sig(context)     ((context)->uc_mcontext->__ss.__rbx)
+#define RCX_sig(context)     ((context)->uc_mcontext->__ss.__rcx)
+#define RDX_sig(context)     ((context)->uc_mcontext->__ss.__rdx)
+#define RSI_sig(context)     ((context)->uc_mcontext->__ss.__rsi)
+#define RDI_sig(context)     ((context)->uc_mcontext->__ss.__rdi)
+#define RBP_sig(context)     ((context)->uc_mcontext->__ss.__rbp)
+#define R8_sig(context)      ((context)->uc_mcontext->__ss.__r8)
+#define R9_sig(context)      ((context)->uc_mcontext->__ss.__r9)
+#define R10_sig(context)     ((context)->uc_mcontext->__ss.__r10)
+#define R11_sig(context)     ((context)->uc_mcontext->__ss.__r11)
+#define R12_sig(context)     ((context)->uc_mcontext->__ss.__r12)
+#define R13_sig(context)     ((context)->uc_mcontext->__ss.__r13)
+#define R14_sig(context)     ((context)->uc_mcontext->__ss.__r14)
+#define R15_sig(context)     ((context)->uc_mcontext->__ss.__r15)
 
-#define RAX_sig(context)    ((context)->uc_mcontext->__ss.__rax)
-#define RBX_sig(context)    ((context)->uc_mcontext->__ss.__rbx)
-#define RCX_sig(context)    ((context)->uc_mcontext->__ss.__rcx)
-#define RDX_sig(context)    ((context)->uc_mcontext->__ss.__rdx)
-#define RSI_sig(context)    ((context)->uc_mcontext->__ss.__rsi)
-#define RDI_sig(context)    ((context)->uc_mcontext->__ss.__rdi)
-#define RBP_sig(context)    ((context)->uc_mcontext->__ss.__rbp)
-#define R8_sig(context)     ((context)->uc_mcontext->__ss.__r8)
-#define R9_sig(context)     ((context)->uc_mcontext->__ss.__r9)
-#define R10_sig(context)    ((context)->uc_mcontext->__ss.__r10)
-#define R11_sig(context)    ((context)->uc_mcontext->__ss.__r11)
-#define R12_sig(context)    ((context)->uc_mcontext->__ss.__r12)
-#define R13_sig(context)    ((context)->uc_mcontext->__ss.__r13)
-#define R14_sig(context)    ((context)->uc_mcontext->__ss.__r14)
-#define R15_sig(context)    ((context)->uc_mcontext->__ss.__r15)
+#define CS_sig(context)      ((context)->uc_mcontext->__ss.__cs)
+#define FS_sig(context)      ((context)->uc_mcontext->__ss.__fs)
+#define GS_sig(context)      ((context)->uc_mcontext->__ss.__gs)
 
-#define CS_sig(context)     ((context)->uc_mcontext->__ss.__cs)
-#define FS_sig(context)     ((context)->uc_mcontext->__ss.__fs)
-#define GS_sig(context)     ((context)->uc_mcontext->__ss.__gs)
+#define EFL_sig(context)     ((context)->uc_mcontext->__ss.__rflags)
 
-#define EFL_sig(context)    ((context)->uc_mcontext->__ss.__rflags)
-
-#define RIP_sig(context)    ((context)->uc_mcontext->__ss.__rip)
-#define RSP_sig(context)    ((context)->uc_mcontext->__ss.__rsp)
+#define RIP_sig(context)     (*((unsigned long*)&(context)->uc_mcontext->__ss.__rip))
+#define RSP_sig(context)     (*((unsigned long*)&(context)->uc_mcontext->__ss.__rsp))
 
 #define TRAP_sig(context)    ((context)->uc_mcontext->__es.__trapno)
 #define ERROR_sig(context)   ((context)->uc_mcontext->__es.__err)
-#define FPU_sig(context)     ((XMM_SAVE_AREA32 *)&(context)->uc_mcontext->__fs)
 
-#else
-
-#define RAX_sig(context)    ((context)->uc_mcontext->ss.rax)
-#define RBX_sig(context)    ((context)->uc_mcontext->ss.rbx)
-#define RCX_sig(context)    ((context)->uc_mcontext->ss.rcx)
-#define RDX_sig(context)    ((context)->uc_mcontext->ss.rdx)
-#define RSI_sig(context)    ((context)->uc_mcontext->ss.rsi)
-#define RDI_sig(context)    ((context)->uc_mcontext->ss.rdi)
-#define RBP_sig(context)    ((context)->uc_mcontext->ss.rbp)
-#define R8_sig(context)     ((context)->uc_mcontext->ss.r8)
-#define R9_sig(context)     ((context)->uc_mcontext->ss.r9)
-#define R10_sig(context)    ((context)->uc_mcontext->ss.r10)
-#define R11_sig(context)    ((context)->uc_mcontext->ss.r11)
-#define R12_sig(context)    ((context)->uc_mcontext->ss.r12)
-#define R13_sig(context)    ((context)->uc_mcontext->ss.r13)
-#define R14_sig(context)    ((context)->uc_mcontext->ss.r14)
-#define R15_sig(context)    ((context)->uc_mcontext->ss.r15)
-
-#define CS_sig(context)     ((context)->uc_mcontext->ss.cs)
-#define FS_sig(context)     ((context)->uc_mcontext->ss.fs)
-#define GS_sig(context)     ((context)->uc_mcontext->ss.gs)
-
-#define EFL_sig(context)    ((context)->uc_mcontext->ss.rflags)
-
-#define RIP_sig(context)    ((context)->uc_mcontext->ss.rip)
-#define RSP_sig(context)    ((context)->uc_mcontext->ss.rsp)
-
-#define TRAP_sig(context)    ((context)->uc_mcontext->es.trapno)
-#define ERROR_sig(context)   ((context)->uc_mcontext->es.err)
-#define FPU_sig(context)     ((XMM_SAVE_AREA32 *)&(context)->uc_mcontext->fs)
-#endif
+#define FPU_sig(context)     ((XMM_SAVE_AREA32 *)&(context)->uc_mcontext->__fs.__fpu_fcw)
 
 #else
 #error You must define the signal context functions for your platform
@@ -338,10 +306,6 @@ typedef void (*raise_func)( EXCEPTION_RECORD *rec, CONTEXT *context );
 typedef int (*wine_signal_handler)(unsigned int sig);
 
 static wine_signal_handler handlers[256];
-
-#ifdef __APPLE__
-static pthread_key_t teb_key;
-#endif
 
 
 /***********************************************************************
@@ -2578,6 +2542,12 @@ void signal_free_thread( TEB *teb )
     NtFreeVirtualMemory( NtCurrentProcess(), (void **)&teb, &size, MEM_RELEASE );
 }
 
+#ifdef __APPLE__
+static void init_teb_key(void)
+{
+    pthread_key_create( &teb_key, NULL );
+}
+#endif
 
 /**********************************************************************
  *		signal_init_thread
@@ -2617,6 +2587,10 @@ void signal_init_thread( TEB *teb )
     const WORD fpu_cw = 0x27f;
     stack_t ss;
 
+#ifdef __APPLE__
+    static pthread_once_t init_once = PTHREAD_ONCE_INIT;
+#endif
+
 #if defined __linux__
     arch_prctl( ARCH_SET_GS, teb );
 #elif defined (__FreeBSD__) || defined (__FreeBSD_kernel__)
@@ -2624,7 +2598,6 @@ void signal_init_thread( TEB *teb )
 #elif defined(__NetBSD__)
 
     sysarch( X86_64_SET_GSBASE, &teb );
-#elif defined(__APPLE__)
 
     struct ntdll_thread_data *ptd = (struct ntdll_thread_data *)(teb->SystemReserved2);
     ptd->saved_gsbase = read_gs0() + 0xE0;
@@ -3558,5 +3531,20 @@ __ASM_STDCALL_FUNC( DbgBreakPoint, 0, "int $3; ret")
  *		DbgUserBreakPoint   (NTDLL.@)
  */
 __ASM_STDCALL_FUNC( DbgUserBreakPoint, 0, "int $3; ret")
+
+/**********************************************************************
+ *              NtCurrentTeb  (NTDLL.@)
+ *
+ * FIXME: This isn't exported from NTDLL on real NT.  This should be
+ *        removed if and when we can set the GSBASE MSR on Mac OS X.
+ */
+#ifdef __APPLE__
+TEB * WINAPI NtCurrentTeb(void)
+{
+    return pthread_getspecific( teb_key );
+}
+#else
+__ASM_STDCALL_FUNC( NtCurrentTeb, 0, ".byte 0x65\n\tmovq 0x30,%rax\n\tret" )
+#endif
 
 #endif  /* __x86_64__ */
