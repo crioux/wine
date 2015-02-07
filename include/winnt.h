@@ -2295,6 +2295,7 @@ static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
 extern struct _TEB * WINAPI NtCurrentTeb(void);
 #endif
 
+
 #ifdef NONAMELESSUNION
 #define GetCurrentFiber()  (((NT_TIB *)NtCurrentTeb())->u.FiberData)
 #else

@@ -1411,6 +1411,10 @@
 # Relays
 @ cdecl -i386 __wine_enter_vm86(ptr)
 
+# Thunks
+@ cdecl -arch=x86_64 __wine_thunk_to_windows()
+@ cdecl -arch=x86_64 __wine_thunk_to_host()
+
 # Server interface
 @ cdecl -norelay wine_server_call(ptr)
 @ cdecl wine_server_fd_to_handle(long long long ptr)

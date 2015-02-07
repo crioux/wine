@@ -2598,12 +2598,12 @@ void signal_init_thread( TEB *teb )
 
     struct ntdll_thread_data *ptd = ntdll_get_thread_data();
     ptd->saved_gsbase = read_gs0() + 0xE0;
-
+/*
     printf ("teb: %p\n", teb);
     printf ("ptdaddr: %p\n", ptd);
     printf ("&saved_gsbase: %p\n", &(ptd->saved_gsbase));
     printf ("saved_gsbase: %p\n", ptd->saved_gsbase);
-
+*/
 #else
 
 # error Please define setting %gs for your architecture

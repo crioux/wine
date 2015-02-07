@@ -253,41 +253,97 @@ struct stub
 struct windows_thunk
 {
     BYTE nop;
-    BYTE push_rdi;
-    BYTE push_rcx;
-    BYTE push_r11[2];
-    BYTE movabsq_ntct_rax[2];
-    uint64_t abs_addr_of_ntcurrentteb;
-    BYTE callq_rax[2];
-    BYTE movq_rax_rdi[3];
-    BYTE movq_sc_rax[3];
-    uint32_t syscall_number;
-    BYTE syscall[2];
-    BYTE pop_r11[2];
-    BYTE pop_rcx;
-    BYTE pop_rdi;
+
+    /* Convert to Windows */
+    BYTE win_push_rdi;
+    BYTE win_push_rcx;
+    BYTE win_push_r11[2];
+    BYTE win_movabsq_ntct_rax[2];
+    uint64_t win_abs_addr_of_ntcurrentteb;
+    BYTE win_callq_rax[2];
+    BYTE win_movq_rax_rdi[3];
+    BYTE win_movq_sc_rax[3];
+    uint32_t win_syscall_number;
+    BYTE win_syscall[2];
+    BYTE win_pop_r11[2];
+    BYTE win_pop_rcx;
+    BYTE win_pop_rdi;
+    
+    /* Call Target */
     BYTE movabsq_targ_rax[2];
     uint64_t abs_addr_of_target;
-    BYTE jmpq_rax[2];
+    BYTE callq_rax[2];
+
+    /* Convert back to Darwin */
+    BYTE dar_push_rax;
+    BYTE dar_push_rdx;
+    BYTE dar_push_rcx;
+    BYTE dar_push_rdi;
+    BYTE dar_push_r11[2];
+    BYTE dar_movq_gs_rel_rdi[5];
+    uint32_t dar_gs_rel_addr;
+    BYTE dar_movq_sc_rax[3];
+    uint32_t dar_syscall_number;
+    BYTE dar_syscall[2];
+    BYTE dar_pop_r11[2];
+    BYTE dar_pop_rdi;
+    BYTE dar_pop_rcx;
+    BYTE dar_pop_rdx;
+    BYTE dar_pop_rax;
+
+    /* Return */
+    BYTE ret;
+
+
 };
 
 struct darwin_thunk
 {
     BYTE nop;
-    BYTE push_rdi;
-    BYTE push_rcx;
-    BYTE push_r11[2];
-    BYTE movq_gs_rel_rdi[5];
-    uint32_t gs_rel_addr;
-    BYTE movq_sc_rax[3];
-    uint32_t syscall_number;
-    BYTE syscall[2];
-    BYTE pop_r11[2];
-    BYTE pop_rcx;
-    BYTE pop_rdi;
+
+    /* Convert to Darwin */
+    BYTE dar_push_rdi;
+    BYTE dar_push_rcx;
+    BYTE dar_push_r11[2];
+    
+    BYTE dar_movq_gs_rel_rdi[5];
+    uint32_t dar_gs_rel_addr;
+    BYTE dar_movq_sc_rax[3];
+    uint32_t dar_syscall_number;
+    BYTE dar_syscall[2];
+    
+    BYTE dar_pop_r11[2];
+    BYTE dar_pop_rcx;
+    BYTE dar_pop_rdi;
+
+    /* Call Target */
     BYTE movabsq_targ_rax[2];
     uint64_t abs_addr_of_target;
-    BYTE jmpq_rax[2];
+    BYTE callq_rax[2];
+
+    /* Convert back to Windows */
+    BYTE win_push_rax;
+    BYTE win_push_rdx;
+    BYTE win_push_rcx;
+    BYTE win_push_rdi;
+    BYTE win_push_r11[2];
+
+    BYTE win_movabsq_ntct_rax[2];
+    uint64_t win_abs_addr_of_ntcurrentteb;
+    BYTE win_callq_rax[2];
+    BYTE win_movq_rax_rdi[3];
+    BYTE win_movq_sc_rax[3];
+    uint32_t win_syscall_number;
+    BYTE win_syscall[2];
+ 
+    BYTE win_pop_r11[2];
+    BYTE win_pop_rdi;
+    BYTE win_pop_rcx;
+    BYTE win_pop_rdx;
+    BYTE win_pop_rax;
+
+    /* Return */
+    BYTE ret;
 };
 
 #endif
@@ -597,7 +653,40 @@ static FARPROC find_named_export( HMODULE module, const IMAGE_EXPORT_DIRECTORY *
 
 }
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(__LP64__)
+
+/*************************************************************************
+ *      __wine_thunk_to_windows
+ *
+ * Thunk to Windows GS Base
+ */
+
+void __wine_thunk_to_windows(void)
+{
+    TEB *teb = NtCurrentTeb();
+    asm("movq $0x03000003, %%rax\n\t"
+        "syscall\n\t"
+        :
+        : "D" (teb)
+        : );
+}
+
+/*************************************************************************
+ *      __wine_thunk_to_host
+ *
+ * Thunk to Darwin GS Base
+ */
+
+void __wine_thunk_to_host(void)
+{
+    uint32_t gsoffset = (uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,saved_gsbase));
+    asm("movq %%gs:(%%rdi), %%rdi\n\t"
+        "movq $0x3000003, %%rax\n\t"
+        "syscall\n\t"
+        :
+        : "D" (gsoffset)
+        :  );
+}
 
 /*************************************************************************
  *      allocate_windows_thunk
@@ -624,34 +713,67 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
     }
     winthunk = &winthunks[nb_winthunks++];
 
-    winthunk->nop=0xCC; //0x90;
-    winthunk->push_rdi = 0x57;
-    winthunk->push_rcx = 0x51;
-    winthunk->push_r11[0] = 0x41; 
-    winthunk->push_r11[1] = 0x53; 
-    winthunk->movabsq_ntct_rax[0] = 0x48;
-    winthunk->movabsq_ntct_rax[1] = 0xB8;    
-    winthunk->abs_addr_of_ntcurrentteb = (uint64_t)NtCurrentTeb;
-    winthunk->callq_rax[0]=0xFF;
-    winthunk->callq_rax[1]=0xD0;
-    winthunk->movq_rax_rdi[0]=0x48;
-    winthunk->movq_rax_rdi[1]=0x89;
-    winthunk->movq_rax_rdi[2]=0xC7;
-    winthunk->movq_sc_rax[0]=0x48;
-    winthunk->movq_sc_rax[1]=0xC7;
-    winthunk->movq_sc_rax[2]=0xC0;
-    winthunk->syscall_number=0x03000003;
-    winthunk->syscall[0]=0x0F;
-    winthunk->syscall[1]=0x05;
-    winthunk->pop_r11[0]=0x41;
-    winthunk->pop_r11[1]=0x5B;
-    winthunk->pop_rcx=0x59;
-    winthunk->pop_rdi=0x5F;
+    winthunk->nop=0x90;
+
+    winthunk->win_push_rdi = 0x57;
+    winthunk->win_push_rcx = 0x51;
+    winthunk->win_push_r11[0] = 0x41; 
+    winthunk->win_push_r11[1] = 0x53; 
+
+    winthunk->win_movabsq_ntct_rax[0] = 0x48;
+    winthunk->win_movabsq_ntct_rax[1] = 0xB8;    
+    winthunk->win_abs_addr_of_ntcurrentteb = (uint64_t)NtCurrentTeb;
+    winthunk->win_callq_rax[0]=0xFF;
+    winthunk->win_callq_rax[1]=0xD0;
+    winthunk->win_movq_rax_rdi[0]=0x48;
+    winthunk->win_movq_rax_rdi[1]=0x89;
+    winthunk->win_movq_rax_rdi[2]=0xC7;
+    winthunk->win_movq_sc_rax[0]=0x48;
+    winthunk->win_movq_sc_rax[1]=0xC7;
+    winthunk->win_movq_sc_rax[2]=0xC0;
+    winthunk->win_syscall_number=0x03000003;
+    winthunk->win_syscall[0]=0x0F;
+    winthunk->win_syscall[1]=0x05;
+
+    winthunk->win_pop_r11[0]=0x41;
+    winthunk->win_pop_r11[1]=0x5B;
+    winthunk->win_pop_rcx=0x59;
+    winthunk->win_pop_rdi=0x5F;
+
     winthunk->movabsq_targ_rax[0]=0x48;
     winthunk->movabsq_targ_rax[1]=0xB8;
     winthunk->abs_addr_of_target = target;
-    winthunk->jmpq_rax[0]=0xFF;
-    winthunk->jmpq_rax[1]=0xE0;
+    winthunk->callq_rax[0]=0xFF;
+    winthunk->callq_rax[1]=0xD0;
+
+    winthunk->dar_push_rax=0x50;
+    winthunk->dar_push_rdx=0x52;
+    winthunk->dar_push_rcx=0x51;
+    winthunk->dar_push_rdi=0x57;
+    winthunk->dar_push_r11[0]=0x41;
+    winthunk->dar_push_r11[1]=0x53;
+
+    winthunk->dar_movq_gs_rel_rdi[0]=0x65;
+    winthunk->dar_movq_gs_rel_rdi[1]=0x48;
+    winthunk->dar_movq_gs_rel_rdi[2]=0x8B;
+    winthunk->dar_movq_gs_rel_rdi[3]=0x3C;
+    winthunk->dar_movq_gs_rel_rdi[4]=0x25;
+    winthunk->dar_gs_rel_addr=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,saved_gsbase));
+    winthunk->dar_movq_sc_rax[0]=0x48;
+    winthunk->dar_movq_sc_rax[1]=0xC7;
+    winthunk->dar_movq_sc_rax[2]=0xC0;
+    winthunk->dar_syscall_number=0x03000003;
+    winthunk->dar_syscall[0]=0x0F;
+    winthunk->dar_syscall[1]=0x05;
+
+    winthunk->dar_pop_r11[0]=0x41;
+    winthunk->dar_pop_r11[1]=0x5B;
+    winthunk->dar_pop_rdi=0x5F;
+    winthunk->dar_pop_rcx=0x59;
+    winthunk->dar_pop_rdx=0x5A;
+    winthunk->dar_pop_rax=0x58;
+
+    winthunk->ret=0xC3;
 
     return (ULONG_PTR)winthunk;
 }
@@ -664,8 +786,6 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
 
 ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
 {
-    uint32_t gsoffset = offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,saved_gsbase);
-
 #define DARTHUNK_MAX_SIZE (1024*1024)
     static struct darwin_thunk *darthunks=NULL;
     static unsigned int nb_darthunks=0;
@@ -682,32 +802,67 @@ ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
     }
     darthunk = &darthunks[nb_darthunks++];
 
-    darthunk->nop=0xCC; //0x90;
-    darthunk->push_rdi=0x57;
-    darthunk->push_rcx=0x51;
-    darthunk->push_r11[0]=0x41;
-    darthunk->push_r11[1]=0x53;
-    darthunk->movq_gs_rel_rdi[0]=0x65;
-    darthunk->movq_gs_rel_rdi[1]=0x48;
-    darthunk->movq_gs_rel_rdi[2]=0x8B;
-    darthunk->movq_gs_rel_rdi[3]=0x3C;
-    darthunk->movq_gs_rel_rdi[4]=0x25;
-    darthunk->gs_rel_addr=gsoffset;
-    darthunk->movq_sc_rax[0]=0x48;
-    darthunk->movq_sc_rax[1]=0xC7;
-    darthunk->movq_sc_rax[2]=0xC0;
-    darthunk->syscall_number=0x03000003;
-    darthunk->syscall[0]=0x0F;
-    darthunk->syscall[1]=0x05;
-    darthunk->pop_r11[0]=0x41;
-    darthunk->pop_r11[1]=0x5B;
-    darthunk->pop_rcx=0x59;
-    darthunk->pop_rdi=0x5F;
+    darthunk->nop=0x90;
+
+    darthunk->dar_push_rdi=0x57;
+    darthunk->dar_push_rcx=0x51;
+    darthunk->dar_push_r11[0]=0x41;
+    darthunk->dar_push_r11[1]=0x53;
+
+    darthunk->dar_movq_gs_rel_rdi[0]=0x65;
+    darthunk->dar_movq_gs_rel_rdi[1]=0x48;
+    darthunk->dar_movq_gs_rel_rdi[2]=0x8B;
+    darthunk->dar_movq_gs_rel_rdi[3]=0x3C;
+    darthunk->dar_movq_gs_rel_rdi[4]=0x25;
+    darthunk->dar_gs_rel_addr=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,saved_gsbase));
+    darthunk->dar_movq_sc_rax[0]=0x48;
+    darthunk->dar_movq_sc_rax[1]=0xC7;
+    darthunk->dar_movq_sc_rax[2]=0xC0;
+    darthunk->dar_syscall_number=0x03000003;
+    darthunk->dar_syscall[0]=0x0F;
+    darthunk->dar_syscall[1]=0x05;
+    
+    darthunk->dar_pop_r11[0]=0x41;
+    darthunk->dar_pop_r11[1]=0x5B;
+    darthunk->dar_pop_rcx=0x59;
+    darthunk->dar_pop_rdi=0x5F;
+
     darthunk->movabsq_targ_rax[0]=0x48;
     darthunk->movabsq_targ_rax[1]=0xB8;
     darthunk->abs_addr_of_target = target;
-    darthunk->jmpq_rax[0]=0xFF;
-    darthunk->jmpq_rax[1]=0xE0;
+    darthunk->callq_rax[0]=0xFF;
+    darthunk->callq_rax[1]=0xD0;
+
+    darthunk->win_push_rax=0x50;
+    darthunk->win_push_rdx=0x52;
+    darthunk->win_push_rcx=0x51;
+    darthunk->win_push_rdi=0x57;
+    darthunk->win_push_r11[0]=0x41;
+    darthunk->win_push_r11[1]=0x53;
+
+    darthunk->win_movabsq_ntct_rax[0] = 0x48;
+    darthunk->win_movabsq_ntct_rax[1] = 0xB8;    
+    darthunk->win_abs_addr_of_ntcurrentteb = (uint64_t)NtCurrentTeb;
+    darthunk->win_callq_rax[0]=0xFF;
+    darthunk->win_callq_rax[1]=0xD0;
+    darthunk->win_movq_rax_rdi[0]=0x48;
+    darthunk->win_movq_rax_rdi[1]=0x89;
+    darthunk->win_movq_rax_rdi[2]=0xC7;
+    darthunk->win_movq_sc_rax[0]=0x48;
+    darthunk->win_movq_sc_rax[1]=0xC7;
+    darthunk->win_movq_sc_rax[2]=0xC0;
+    darthunk->win_syscall_number=0x03000003;
+    darthunk->win_syscall[0]=0x0F;
+    darthunk->win_syscall[1]=0x05;
+
+    darthunk->win_pop_r11[0]=0x41;
+    darthunk->win_pop_r11[1]=0x5B;
+    darthunk->win_pop_rdi=0x5F;
+    darthunk->win_pop_rcx=0x59;
+    darthunk->win_pop_rdx=0x5A;
+    darthunk->win_pop_rax=0x58;
+
+    darthunk->ret=0xC3;
 
     return (ULONG_PTR)darthunk;    
 }

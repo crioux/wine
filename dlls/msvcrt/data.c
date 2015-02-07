@@ -26,6 +26,7 @@
 #include "wine/library.h"
 #include "wine/unicode.h"
 #include "wine/debug.h"
+#include "wine/thunks.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(msvcrt);
 
@@ -601,7 +602,13 @@ void CDECL _initterm(_INITTERMFUN *start,_INITTERMFUN *end)
     if (*current)
     {
       TRACE("Call init function %p\n",*current);
+
+__wine_thunk_to_windows();
+
       (**current)();
+
+__wine_thunk_to_host();
+
       TRACE("returned\n");
     }
     current++;
