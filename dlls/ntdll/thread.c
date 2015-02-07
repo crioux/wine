@@ -202,6 +202,41 @@ static ULONG64 get_dyld_image_info_addr(void)
 }
 #endif  /* __APPLE__ */
 
+
+
+#if defined(__APPLE__) && defined(__LP64__)
+
+/***********************************************************************
+ * Darwin Wine64 utility functions
+ */
+
+static uint64_t read_gs0()
+{
+    uint64_t x;
+
+    asm("movq %%gs:(0), %0"
+        : "=r" (x)
+        :
+        :
+        );
+
+    return x;
+}
+
+ULONG_PTR allocate_thunk_stack(void)
+{
+#define THUNK_STACK_MAX_SIZE (65536)
+
+    SIZE_T size = THUNK_STACK_MAX_SIZE;
+    void *thunk_stack = NULL;
+    if (NtAllocateVirtualMemory( NtCurrentProcess(), (void **)&thunk_stack, 0, &size,
+                                 MEM_COMMIT, PAGE_READWRITE ) != STATUS_SUCCESS)
+        return 0xdeadbeef;
+    return (ULONG_PTR)thunk_stack;
+}
+
+#endif
+
 /***********************************************************************
  *           thread_init
  *
@@ -294,6 +329,13 @@ HANDLE thread_init(void)
     thread_data->wait_fd[0] = -1;
     thread_data->wait_fd[1] = -1;
     thread_data->debug_info = &debug_info;
+
+#if defined(__APPLE__) && defined(__LP64__)
+    thread_data->saved_gsbase = read_gs0() + 0xE0;
+    thread_data->thunk_stack_base = allocate_thunk_stack();
+    thread_data->thunk_stack_ptr = thread_data->thunk_stack_base;
+#endif
+
     InsertHeadList( &tls_links, &teb->TlsLinks );
 
     signal_init_thread( teb );
@@ -360,6 +402,10 @@ void terminate_thread( int status )
     close( ntdll_get_thread_data()->wait_fd[1] );
     close( ntdll_get_thread_data()->reply_fd );
     close( ntdll_get_thread_data()->request_fd );
+#if defined(__APPLE__) && defined(__LP64__)
+    SIZE_T size=0;
+    NtFreeVirtualMemory(NtCurrentProcess(), (void **)&(ntdll_get_thread_data()->thunk_stack_base), &size, MEM_RELEASE);
+#endif
     pthread_exit( UIntToPtr(status) );
 }
 
@@ -409,6 +455,10 @@ void exit_thread( int status )
     close( ntdll_get_thread_data()->wait_fd[1] );
     close( ntdll_get_thread_data()->reply_fd );
     close( ntdll_get_thread_data()->request_fd );
+#if defined(__APPLE__) && defined(__LP64__)
+    SIZE_T size=0;
+    NtFreeVirtualMemory(NtCurrentProcess(), (void **)&(ntdll_get_thread_data()->thunk_stack_base), &size, MEM_RELEASE);
+#endif
     pthread_exit( UIntToPtr(status) );
 }
 

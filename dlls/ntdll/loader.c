@@ -257,38 +257,53 @@ struct windows_thunk
     /* Convert to Windows */
     BYTE win_push_rdi;
     BYTE win_push_rcx;
-    BYTE win_push_r11[2];
-    BYTE win_movabsq_ntct_rax[2];
+    BYTE win_movabsq_ntct_r11[2];
     uint64_t win_abs_addr_of_ntcurrentteb;
-    BYTE win_callq_rax[2];
+    BYTE win_callq_r11[3];
     BYTE win_movq_rax_rdi[3];
     BYTE win_movq_sc_rax[3];
     uint32_t win_syscall_number;
     BYTE win_syscall[2];
-    BYTE win_pop_r11[2];
     BYTE win_pop_rcx;
     BYTE win_pop_rdi;
     
+    /* Thunk stack in */
+    BYTE tsi_movq_gs_rel_r11[5];
+    uint32_t thunk_stack_ptr_1;
+    BYTE tsi_popq_r11[3];
+    BYTE tsi_leaq_8_r11_r11[4];
+    BYTE tsi_movq_r11_gs_rel[5];
+    uint32_t thunk_stack_ptr_2;
+    
+    /* Set return location */
+    BYTE srl_movabsq_retloc_r11[2];
+    uint64_t srl_retloc;
+    BYTE srl_pushq_r11[2];
+
     /* Call Target */
-    BYTE movabsq_targ_rax[2];
+    BYTE movabsq_targ_r11[2];
     uint64_t abs_addr_of_target;
-    BYTE callq_rax[2];
+    BYTE jmpq_r11[3];
+
+    /* Thunk stack out */
+    BYTE tso_movq_gs_rel_r11[5];
+    uint32_t thunk_stack_ptr_3;
+    BYTE tso_leaq_n8_r11_r11[4];
+    BYTE tso_pushq_r11[3];
+    BYTE tso_movq_r11_gs_rel[5];
+    uint32_t thunk_stack_ptr_4;
 
     /* Convert back to Darwin */
     BYTE dar_push_rax;
-    BYTE dar_push_rdx;
     BYTE dar_push_rcx;
     BYTE dar_push_rdi;
-    BYTE dar_push_r11[2];
     BYTE dar_movq_gs_rel_rdi[5];
     uint32_t dar_gs_rel_addr;
     BYTE dar_movq_sc_rax[3];
     uint32_t dar_syscall_number;
     BYTE dar_syscall[2];
-    BYTE dar_pop_r11[2];
     BYTE dar_pop_rdi;
     BYTE dar_pop_rcx;
-    BYTE dar_pop_rdx;
     BYTE dar_pop_rax;
 
     /* Return */
@@ -301,10 +316,20 @@ struct darwin_thunk
 {
     BYTE nop;
 
+    /* Thunk stack in */
+    BYTE tsi_movq_gs_rel_r11[5];
+    uint32_t thunk_stack_ptr_1;
+    BYTE tsi_popq_r11[3];
+    BYTE tsi_movq_rsi_8_r11[4];
+    BYTE tsi_movq_rdi_16_r11[4];
+    BYTE tsi_leaq_24_r11_r11[4];
+    BYTE tsi_movq_r11_gs_rel[5];
+    uint32_t thunk_stack_ptr_2;
+
     /* Convert to Darwin */
     BYTE dar_push_rdi;
     BYTE dar_push_rcx;
-    BYTE dar_push_r11[2];
+    BYTE dar_push_rax;
     
     BYTE dar_movq_gs_rel_rdi[5];
     uint32_t dar_gs_rel_addr;
@@ -312,21 +337,24 @@ struct darwin_thunk
     uint32_t dar_syscall_number;
     BYTE dar_syscall[2];
     
-    BYTE dar_pop_r11[2];
+    BYTE dar_pop_rax;
     BYTE dar_pop_rcx;
     BYTE dar_pop_rdi;
 
+    /* Set return location */
+    BYTE srl_movabsq_retloc_r11[2];
+    uint64_t srl_retloc;
+    BYTE srl_pushq_r11[2];
+
     /* Call Target */
-    BYTE movabsq_targ_rax[2];
+    BYTE movabsq_targ_r11[2];
     uint64_t abs_addr_of_target;
-    BYTE callq_rax[2];
+    BYTE jmpq_r11[3];
 
     /* Convert back to Windows */
     BYTE win_push_rax;
     BYTE win_push_rdx;
     BYTE win_push_rcx;
-    BYTE win_push_rdi;
-    BYTE win_push_r11[2];
 
     BYTE win_movabsq_ntct_rax[2];
     uint64_t win_abs_addr_of_ntcurrentteb;
@@ -336,12 +364,19 @@ struct darwin_thunk
     uint32_t win_syscall_number;
     BYTE win_syscall[2];
  
-    BYTE win_pop_r11[2];
-    BYTE win_pop_rdi;
     BYTE win_pop_rcx;
     BYTE win_pop_rdx;
     BYTE win_pop_rax;
 
+    /* Thunk stack out */
+    BYTE tso_movq_gs_rel_r11[5];
+    uint32_t thunk_stack_ptr_3;
+    BYTE tso_leaq_n24_r11_r11[4];
+    BYTE tso_movq_16_r11_rdi[4];
+    BYTE tso_movq_8_r11_rsi[4];
+    BYTE tso_pushq_r11[3];
+    BYTE tso_movq_r11_gs_rel[5];
+    uint32_t thunk_stack_ptr_4;
     /* Return */
     BYTE ret;
 };
@@ -713,18 +748,17 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
     }
     winthunk = &winthunks[nb_winthunks++];
 
-    winthunk->nop=0x90;
+    winthunk->nop=0xCC;
 
     winthunk->win_push_rdi = 0x57;
     winthunk->win_push_rcx = 0x51;
-    winthunk->win_push_r11[0] = 0x41; 
-    winthunk->win_push_r11[1] = 0x53; 
 
-    winthunk->win_movabsq_ntct_rax[0] = 0x48;
-    winthunk->win_movabsq_ntct_rax[1] = 0xB8;    
+    winthunk->win_movabsq_ntct_r11[0] = 0x49;
+    winthunk->win_movabsq_ntct_r11[1] = 0xBB;    
     winthunk->win_abs_addr_of_ntcurrentteb = (uint64_t)NtCurrentTeb;
-    winthunk->win_callq_rax[0]=0xFF;
-    winthunk->win_callq_rax[1]=0xD0;
+    winthunk->win_callq_r11[0]=0x41;
+    winthunk->win_callq_r11[1]=0xFF;
+    winthunk->win_callq_r11[2]=0xD3;
     winthunk->win_movq_rax_rdi[0]=0x48;
     winthunk->win_movq_rax_rdi[1]=0x89;
     winthunk->win_movq_rax_rdi[2]=0xC7;
@@ -735,24 +769,66 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
     winthunk->win_syscall[0]=0x0F;
     winthunk->win_syscall[1]=0x05;
 
-    winthunk->win_pop_r11[0]=0x41;
-    winthunk->win_pop_r11[1]=0x5B;
     winthunk->win_pop_rcx=0x59;
     winthunk->win_pop_rdi=0x5F;
 
-    winthunk->movabsq_targ_rax[0]=0x48;
-    winthunk->movabsq_targ_rax[1]=0xB8;
+    winthunk->tsi_movq_gs_rel_r11[0]=0x65;
+    winthunk->tsi_movq_gs_rel_r11[1]=0x4C;
+    winthunk->tsi_movq_gs_rel_r11[2]=0x8B;
+    winthunk->tsi_movq_gs_rel_r11[3]=0x1C;
+    winthunk->tsi_movq_gs_rel_r11[4]=0x25;
+    winthunk->thunk_stack_ptr_1=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,thunk_stack_ptr));
+    winthunk->tsi_popq_r11[0]=0x41;
+    winthunk->tsi_popq_r11[1]=0x8F;
+    winthunk->tsi_popq_r11[2]=0x03;
+    winthunk->tsi_leaq_8_r11_r11[0]=0x4D;
+    winthunk->tsi_leaq_8_r11_r11[1]=0x8D;
+    winthunk->tsi_leaq_8_r11_r11[2]=0x5B;
+    winthunk->tsi_leaq_8_r11_r11[3]=0x08;
+    winthunk->tsi_movq_r11_gs_rel[0]=0x65;
+    winthunk->tsi_movq_r11_gs_rel[1]=0x4C;
+    winthunk->tsi_movq_r11_gs_rel[2]=0x89;
+    winthunk->tsi_movq_r11_gs_rel[3]=0x1C;
+    winthunk->tsi_movq_r11_gs_rel[4]=0x25;
+    winthunk->thunk_stack_ptr_2=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,thunk_stack_ptr));
+
+    winthunk->srl_movabsq_retloc_r11[0]=0x49;
+    winthunk->srl_movabsq_retloc_r11[1]=0xBB;
+    winthunk->srl_retloc=((uint64_t)winthunk)+(uint64_t)offsetof(struct windows_thunk, tso_movq_gs_rel_r11);
+    winthunk->srl_pushq_r11[0]=0x41;
+    winthunk->srl_pushq_r11[1]=0x53;
+
+    winthunk->movabsq_targ_r11[0]=0x49;
+    winthunk->movabsq_targ_r11[1]=0xBB;
     winthunk->abs_addr_of_target = target;
-    winthunk->callq_rax[0]=0xFF;
-    winthunk->callq_rax[1]=0xD0;
+    winthunk->jmpq_r11[0]=0x41;
+    winthunk->jmpq_r11[1]=0xFF;
+    winthunk->jmpq_r11[2]=0xE3;
+
+    winthunk->tso_movq_gs_rel_r11[0]=0x65;
+    winthunk->tso_movq_gs_rel_r11[1]=0x4C;
+    winthunk->tso_movq_gs_rel_r11[2]=0x8B;
+    winthunk->tso_movq_gs_rel_r11[3]=0x1C;
+    winthunk->tso_movq_gs_rel_r11[4]=0x25;
+    winthunk->thunk_stack_ptr_3=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,thunk_stack_ptr));
+    winthunk->tso_leaq_n8_r11_r11[0]=0x4D;
+    winthunk->tso_leaq_n8_r11_r11[1]=0x8D;
+    winthunk->tso_leaq_n8_r11_r11[2]=0x5B;
+    winthunk->tso_leaq_n8_r11_r11[3]=0xF8;
+    winthunk->tso_pushq_r11[0]=0x41;
+    winthunk->tso_pushq_r11[1]=0xFF;
+    winthunk->tso_pushq_r11[2]=0x33;
+    winthunk->tso_movq_r11_gs_rel[0]=0x65;
+    winthunk->tso_movq_r11_gs_rel[1]=0x4C;
+    winthunk->tso_movq_r11_gs_rel[2]=0x89;
+    winthunk->tso_movq_r11_gs_rel[3]=0x1C;
+    winthunk->tso_movq_r11_gs_rel[4]=0x25;
+    winthunk->thunk_stack_ptr_4=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,thunk_stack_ptr));
 
     winthunk->dar_push_rax=0x50;
-    winthunk->dar_push_rdx=0x52;
     winthunk->dar_push_rcx=0x51;
     winthunk->dar_push_rdi=0x57;
-    winthunk->dar_push_r11[0]=0x41;
-    winthunk->dar_push_r11[1]=0x53;
-
+ 
     winthunk->dar_movq_gs_rel_rdi[0]=0x65;
     winthunk->dar_movq_gs_rel_rdi[1]=0x48;
     winthunk->dar_movq_gs_rel_rdi[2]=0x8B;
@@ -766,11 +842,8 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
     winthunk->dar_syscall[0]=0x0F;
     winthunk->dar_syscall[1]=0x05;
 
-    winthunk->dar_pop_r11[0]=0x41;
-    winthunk->dar_pop_r11[1]=0x5B;
     winthunk->dar_pop_rdi=0x5F;
     winthunk->dar_pop_rcx=0x59;
-    winthunk->dar_pop_rdx=0x5A;
     winthunk->dar_pop_rax=0x58;
 
     winthunk->ret=0xC3;
@@ -804,10 +877,37 @@ ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
 
     darthunk->nop=0x90;
 
+    darthunk->tsi_movq_gs_rel_r11[0]=0x65;
+    darthunk->tsi_movq_gs_rel_r11[1]=0x4C;
+    darthunk->tsi_movq_gs_rel_r11[2]=0x8B;
+    darthunk->tsi_movq_gs_rel_r11[3]=0x1C;
+    darthunk->tsi_movq_gs_rel_r11[4]=0x25;
+    darthunk->thunk_stack_ptr_1=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,thunk_stack_ptr));
+    darthunk->tsi_popq_r11[0]=0x41;
+    darthunk->tsi_popq_r11[1]=0x8F;
+    darthunk->tsi_popq_r11[2]=0x03;
+    darthunk->tsi_movq_rsi_8_r11[0]=0x49;
+    darthunk->tsi_movq_rsi_8_r11[1]=0x89;
+    darthunk->tsi_movq_rsi_8_r11[2]=0x73;
+    darthunk->tsi_movq_rsi_8_r11[3]=0x08;
+    darthunk->tsi_movq_rdi_16_r11[0]=0x49;
+    darthunk->tsi_movq_rdi_16_r11[1]=0x89;
+    darthunk->tsi_movq_rdi_16_r11[2]=0x7B;
+    darthunk->tsi_movq_rdi_16_r11[3]=0x10;
+    darthunk->tsi_leaq_24_r11_r11[0]=0x4D;
+    darthunk->tsi_leaq_24_r11_r11[1]=0x8D;
+    darthunk->tsi_leaq_24_r11_r11[2]=0x5B;
+    darthunk->tsi_leaq_24_r11_r11[3]=0x18;
+    darthunk->tsi_movq_r11_gs_rel[0]=0x65;
+    darthunk->tsi_movq_r11_gs_rel[1]=0x4C;
+    darthunk->tsi_movq_r11_gs_rel[2]=0x89;
+    darthunk->tsi_movq_r11_gs_rel[3]=0x1C;
+    darthunk->tsi_movq_r11_gs_rel[4]=0x25;
+    darthunk->thunk_stack_ptr_2=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,thunk_stack_ptr));
+
     darthunk->dar_push_rdi=0x57;
     darthunk->dar_push_rcx=0x51;
-    darthunk->dar_push_r11[0]=0x41;
-    darthunk->dar_push_r11[1]=0x53;
+    darthunk->dar_push_rax=0x50;
 
     darthunk->dar_movq_gs_rel_rdi[0]=0x65;
     darthunk->dar_movq_gs_rel_rdi[1]=0x48;
@@ -822,23 +922,26 @@ ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
     darthunk->dar_syscall[0]=0x0F;
     darthunk->dar_syscall[1]=0x05;
     
-    darthunk->dar_pop_r11[0]=0x41;
-    darthunk->dar_pop_r11[1]=0x5B;
+    darthunk->dar_pop_rax=0x58;
     darthunk->dar_pop_rcx=0x59;
     darthunk->dar_pop_rdi=0x5F;
 
-    darthunk->movabsq_targ_rax[0]=0x48;
-    darthunk->movabsq_targ_rax[1]=0xB8;
+    darthunk->srl_movabsq_retloc_r11[0]=0x49;
+    darthunk->srl_movabsq_retloc_r11[1]=0xBB;
+    darthunk->srl_retloc=((uint64_t)darthunk)+(uint64_t)offsetof(struct darwin_thunk, win_push_rax);
+    darthunk->srl_pushq_r11[0]=0x41;
+    darthunk->srl_pushq_r11[1]=0x53;
+
+    darthunk->movabsq_targ_r11[0]=0x49;
+    darthunk->movabsq_targ_r11[1]=0xBB;
     darthunk->abs_addr_of_target = target;
-    darthunk->callq_rax[0]=0xFF;
-    darthunk->callq_rax[1]=0xD0;
+    darthunk->jmpq_r11[0]=0x41;
+    darthunk->jmpq_r11[1]=0xFF;
+    darthunk->jmpq_r11[2]=0xE3;
 
     darthunk->win_push_rax=0x50;
     darthunk->win_push_rdx=0x52;
     darthunk->win_push_rcx=0x51;
-    darthunk->win_push_rdi=0x57;
-    darthunk->win_push_r11[0]=0x41;
-    darthunk->win_push_r11[1]=0x53;
 
     darthunk->win_movabsq_ntct_rax[0] = 0x48;
     darthunk->win_movabsq_ntct_rax[1] = 0xB8;    
@@ -855,12 +958,37 @@ ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
     darthunk->win_syscall[0]=0x0F;
     darthunk->win_syscall[1]=0x05;
 
-    darthunk->win_pop_r11[0]=0x41;
-    darthunk->win_pop_r11[1]=0x5B;
-    darthunk->win_pop_rdi=0x5F;
     darthunk->win_pop_rcx=0x59;
     darthunk->win_pop_rdx=0x5A;
     darthunk->win_pop_rax=0x58;
+
+    darthunk->tso_movq_gs_rel_r11[0]=0x65;
+    darthunk->tso_movq_gs_rel_r11[1]=0x4C;
+    darthunk->tso_movq_gs_rel_r11[2]=0x8B;
+    darthunk->tso_movq_gs_rel_r11[3]=0x1C;
+    darthunk->tso_movq_gs_rel_r11[4]=0x25;
+    darthunk->thunk_stack_ptr_3=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,thunk_stack_ptr));
+    darthunk->tso_leaq_n24_r11_r11[0]=0x4D;
+    darthunk->tso_leaq_n24_r11_r11[1]=0x8D;
+    darthunk->tso_leaq_n24_r11_r11[2]=0x5B;
+    darthunk->tso_leaq_n24_r11_r11[3]=0xE8;
+    darthunk->tso_movq_16_r11_rdi[0]=0x49;
+    darthunk->tso_movq_16_r11_rdi[1]=0x8B;
+    darthunk->tso_movq_16_r11_rdi[2]=0x7B;
+    darthunk->tso_movq_16_r11_rdi[3]=0x10;
+    darthunk->tso_movq_8_r11_rsi[0]=0x49;
+    darthunk->tso_movq_8_r11_rsi[1]=0x8B;
+    darthunk->tso_movq_8_r11_rsi[2]=0x73;
+    darthunk->tso_movq_8_r11_rsi[3]=0x08;
+    darthunk->tso_pushq_r11[0]=0x41;
+    darthunk->tso_pushq_r11[1]=0xFF;
+    darthunk->tso_pushq_r11[2]=0x33;
+    darthunk->tso_movq_r11_gs_rel[0]=0x65;
+    darthunk->tso_movq_r11_gs_rel[1]=0x4C;
+    darthunk->tso_movq_r11_gs_rel[2]=0x89;
+    darthunk->tso_movq_r11_gs_rel[3]=0x1C;
+    darthunk->tso_movq_r11_gs_rel[4]=0x25;
+    darthunk->thunk_stack_ptr_4=(uint32_t)(offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,thunk_stack_ptr));
 
     darthunk->ret=0xC3;
 
@@ -2872,6 +3000,37 @@ void* WINAPI LdrResolveDelayLoadedAPI( void* base, const IMAGE_DELAYLOAD_DESCRIP
     }
     if (!nts)
     {
+
+#ifdef __APPLE__
+
+        /* Special GS handling for OSX */
+        WINE_MODREF *wmImp = get_modref(*phmod);
+
+        BOOL current_is_builtin = FALSE; /* if something is calling this, it has to be windows */
+        BOOL imp_is_builtin = (wmImp->ldr.Flags & LDR_WINE_INTERNAL) ? TRUE:FALSE;
+
+        if(current_is_builtin && !imp_is_builtin)
+        {
+            /*
+            If we are a builtin and we're importing a windows
+            switch to windows gs base
+            */
+            fp = allocate_windows_thunk(fp);
+        }
+
+        if(!current_is_builtin && imp_is_builtin)
+        {
+            /* 
+            If we are a windows and we're importing a builtin
+            switch to darwin gs base
+            */
+            fp = allocate_darwin_thunk(fp);
+        }
+
+#endif
+
+
+
         pIAT[id].u1.Function = (ULONG_PTR)fp;
         return fp;
     }

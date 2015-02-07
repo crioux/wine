@@ -238,6 +238,8 @@ struct ntdll_thread_data
     pthread_t          pthread_id;    /* 1f8/310 pthread thread id */
 #ifdef __APPLE__
     uint64_t           saved_gsbase;  /* 1fc saved MSR 0xC0000102 */
+    uint64_t           thunk_stack_base; /* pointer to per-thread allocated stack area for thunks (upward growing)*/
+    uint64_t           thunk_stack_ptr; /* pointer to per-thread allocated stack area for thunks */
 #endif
 #ifdef __i386__
     WINE_VM86_TEB_INFO vm86;          /* 1fc vm86 private data */

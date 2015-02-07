@@ -2552,23 +2552,6 @@ static void init_teb_key(void)
  *		signal_init_thread
  */
 
-#if defined(__APPLE__)
-
-static uint64_t read_gs0()
-{
-    uint64_t x;
-
-    asm("movq %%gs:(0), %0"
-        : "=r" (x)
-        :
-        :
-        );
-
-    return x;
-}
-
-#endif
-
 void signal_init_thread( TEB *teb )
 {
     const WORD fpu_cw = 0x27f;
@@ -2596,14 +2579,6 @@ void signal_init_thread( TEB *teb )
     }
     pthread_setspecific( teb_key, teb );
 
-    struct ntdll_thread_data *ptd = ntdll_get_thread_data();
-    ptd->saved_gsbase = read_gs0() + 0xE0;
-/*
-    printf ("teb: %p\n", teb);
-    printf ("ptdaddr: %p\n", ptd);
-    printf ("&saved_gsbase: %p\n", &(ptd->saved_gsbase));
-    printf ("saved_gsbase: %p\n", ptd->saved_gsbase);
-*/
 #else
 
 # error Please define setting %gs for your architecture
