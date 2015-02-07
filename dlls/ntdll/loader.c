@@ -279,8 +279,6 @@ struct darwin_thunk
     BYTE push_r11[2];
     BYTE movq_gs_rel_rdi[5];
     uint32_t gs_rel_addr;
-    BYTE movq_rdi_rel_rdi[3];
-    uint32_t rdi_rel_addr;
     BYTE movq_sc_rax[3];
     uint32_t syscall_number;
     BYTE syscall[2];
@@ -666,8 +664,7 @@ ULONG_PTR allocate_windows_thunk(ULONG_PTR target)
 
 ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
 {
-    uint32_t ptdoffset = (uint32_t)(uint64_t)&(((TEB *)0)->SystemReserved2);
-    uint32_t gsoffset = (uint32_t)(uint64_t)&(((struct ntdll_thread_data *)0)->saved_gsbase);
+    uint32_t gsoffset = offsetof(TEB,SpareBytes1)+offsetof(struct ntdll_thread_data,saved_gsbase);
 
 #define DARTHUNK_MAX_SIZE (1024*1024)
     static struct darwin_thunk *darthunks=NULL;
@@ -695,11 +692,7 @@ ULONG_PTR allocate_darwin_thunk(ULONG_PTR target)
     darthunk->movq_gs_rel_rdi[2]=0x8B;
     darthunk->movq_gs_rel_rdi[3]=0x3C;
     darthunk->movq_gs_rel_rdi[4]=0x25;
-    darthunk->gs_rel_addr=ptdoffset;
-    darthunk->movq_rdi_rel_rdi[0]=0x48;
-    darthunk->movq_rdi_rel_rdi[1]=0x8B;
-    darthunk->movq_rdi_rel_rdi[2]=0xBF;
-    darthunk->rdi_rel_addr=gsoffset;
+    darthunk->gs_rel_addr=gsoffset;
     darthunk->movq_sc_rax[0]=0x48;
     darthunk->movq_sc_rax[1]=0xC7;
     darthunk->movq_sc_rax[2]=0xC0;
@@ -3090,6 +3083,11 @@ void WINAPI LdrInitializeThunk( void *kernel_start, ULONG_PTR unknown2,
         ERR("%s is a dll, not an executable\n", debugstr_w(wm->ldr.FullDllName.Buffer) );
         exit(1);
     }
+
+#if defined(__APPLE__) && defined(__LP64__)
+    /* save off builtin flag for kernel32 later*/
+    peb->Reserved[0]=(wm->ldr.Flags & LDR_WINE_INTERNAL) ? 1 : 0;
+#endif
 
     peb->LoaderLock = &loader_section;
     peb->ProcessParameters->ImagePathName = wm->ldr.FullDllName;

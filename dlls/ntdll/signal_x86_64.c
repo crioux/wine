@@ -14,7 +14,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
+ * License along with this library; if not, to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
@@ -305,10 +305,6 @@ typedef void (*raise_func)( EXCEPTION_RECORD *rec, CONTEXT *context );
 typedef int (*wine_signal_handler)(unsigned int sig);
 
 static wine_signal_handler handlers[256];
-
-#ifdef __APPLE__
-static pthread_key_t teb_key;
-#endif
 
 
 /***********************************************************************
@@ -2558,18 +2554,6 @@ static void init_teb_key(void)
 
 #if defined(__APPLE__)
 
-#define MSR_IA32_GS_BASE                0xC0000101
-#define MSR_IA32_KERNEL_GS_BASE         0xC0000102
-#define THREAD_FAST_SET_CTHREAD_SELF    "0x3000003"
-
-static inline void write_gs_base(uint64_t val)
-{
-    asm("movq $"THREAD_FAST_SET_CTHREAD_SELF", %%rax\n\t"
-        "syscall\n\t":
-        : "D" (val)
-        : "%rax" );
-}
-
 static uint64_t read_gs0()
 {
     uint64_t x;
@@ -2603,19 +2587,22 @@ void signal_init_thread( TEB *teb )
     sysarch( X86_64_SET_GSBASE, &teb );
 #elif defined(__APPLE__)
 
-    struct ntdll_thread_data *ptd = (struct ntdll_thread_data *)(teb->SystemReserved2);
-    ptd->saved_gsbase = read_gs0() + 0xE0;
-
-//    write_gs_base((uint64_t)teb);
-
     static BOOL init_done=FALSE;
 
     if (!init_done)
     {
-        pthread_key_create( &teb_key, NULL );
+        init_teb_key();
         init_done = TRUE;
     }
     pthread_setspecific( teb_key, teb );
+
+    struct ntdll_thread_data *ptd = ntdll_get_thread_data();
+    ptd->saved_gsbase = read_gs0() + 0xE0;
+
+    printf ("teb: %p\n", teb);
+    printf ("ptdaddr: %p\n", ptd);
+    printf ("&saved_gsbase: %p\n", &(ptd->saved_gsbase));
+    printf ("saved_gsbase: %p\n", ptd->saved_gsbase);
 
 #else
 

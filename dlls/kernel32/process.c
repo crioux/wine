@@ -1101,6 +1101,21 @@ static DWORD WINAPI start_process( PEB *peb )
 
     SetLastError( 0 );  /* clear error code */
     if (peb->BeingDebugged) DbgBreakPoint();
+
+#if defined(__APPLE__)
+    if(peb->Reserved[0]==0)
+    {
+        // Switch to Windows GS
+        TEB *teb = NtCurrentTeb();
+        printf("Switching To Windows GS: TEB=%p\n",teb);
+        asm("movq $0x03000003, %%rax\n\t"
+            "syscall\n\t":
+            : "D" (teb)
+            : "%rax" );
+
+    } 
+#endif
+
     return call_process_entry( peb, entry );
 }
 

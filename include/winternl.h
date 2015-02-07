@@ -236,7 +236,7 @@ typedef struct _PEB
     PVOID /*PPEBLOCKROUTINE*/    FastPebUnlockRoutine;              /* 024/048 */
     ULONG                        EnvironmentUpdateCount;            /* 028/050 */
     PVOID                        KernelCallbackTable;               /* 02c/058 */
-    ULONG                        Reserved[2];                       /* 030/060 */
+    ULONG                        Reserved[2];                       /* 030/060   Reserved[0] in Wine64 Darwin set to 0 if windows, 1 if builtin */
     PVOID /*PPEB_FREE_BLOCK*/    FreeList;                          /* 038/068 */
     ULONG                        TlsExpansionCounter;               /* 03c/070 */
     PRTL_BITMAP                  TlsBitmap;                         /* 040/078 */
